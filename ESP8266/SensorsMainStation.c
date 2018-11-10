@@ -220,5 +220,4 @@ void loop() {
  
   server.handleClient();
   TempLoop( t );
-  sleep(1);
 }
