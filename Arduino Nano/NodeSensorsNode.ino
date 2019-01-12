@@ -15,75 +15,56 @@
 
 #define VSN "v1.0"
 
-// Define two generic nodes with a single child
-#define main 200
-#define NODE_ID 201
 #define CHILD_LIGHT 1
+#define CHILD_TEMP 2
+#define CHILD_HUM 3
 
 #define DHT_DATA_PIN 8
 #define LED_PIN 2
 
 //V_TRIPPED
+#define LIGHT_OFF 0
+#define LIGHT_ON 1
 #define GET_LIGHT_STATUS 2
 #define GET_TEMP 3
 #define GET_HUM 4
 
-//V_STATUS
-#define LIGHT_ON 1
-#define LIGHT_OFF 0
-
-//V_TEMP
-#define CHILD_TEMP 2
-
-//V_HUM
-#define CHILD_HUM 3
-
 static const uint64_t UPDATE_INTERVAL = 60000;
 long lightStatus;
-
-float temp;
-float hum;
-bool metric = true;
+int temp;
+int hum;
+long previousTime = 0;
 
 MyMessage msgHum(CHILD_HUM, V_HUM);
 MyMessage msgTemp(CHILD_TEMP, V_TEMP);
+MyMessage msgLight(CHILD_LIGHT,V_TRIPPED);
 DHT dht;
 
 void setup() {
-  // put your setup code here, to run once:
+  
   pinMode(LED_PIN, OUTPUT);
 
-  dht.setup(DHT_DATA_PIN); // set data pin of DHT sensor
+  dht.setup(DHT_DATA_PIN); // data pin of DHT sensor
+  
   if (UPDATE_INTERVAL <= dht.getMinimumSamplingPeriod()) {
     Serial.println("Warning: UPDATE_INTERVAL is smaller than supported by the sensor!");
   }
 
   msgHum.setDestination(MY_PARENT_NODE_ID);
-  msgTemp.setDesination(MY_PARENT_NODE_ID);
-  
-  // Sleep for the time of the minimum sampling period to give the sensor time to power up
-  // (otherwise, timeout errors might occure for the first reading)
-  sleep(dht.getMinimumSamplingPeriod());
-}
+  msgTemp.setDestination(MY_PARENT_NODE_ID);
+  msgLight.setDestination(MY_PARENT_NODE_ID);
 
-void presentation() {
-  //present(CHILD_LIGHT, S_BINARY);
-  //present(CHILD_HUM, S_HUM);
-  //present(CHILD_TEMP, S_TEMP);
-  metric = getControllerConfig().isMetric;
 }
 
 void loop() {
-
-  dht.readSensor(true);
-
-  readTemp();
-  readHum();
  
-  send(msgHum.set(hum));
-  send(msgTemp.set(temp));
-  
-  delay(UPDATE_INTERVAL*5);
+  unsigned long currentTime = millis();
+
+  if(currentTime-previousTime >= UPDATE_INTERVAL){
+      readTemp();
+      readHum();
+      previousTime = millis();
+  }
 }
 
 void receive(const MyMessage &message){
@@ -96,10 +77,8 @@ void receive(const MyMessage &message){
       } else if (message.getLong() == LIGHT_OFF){
           turnLightOff();
       } else if (message.getLong() == GET_LIGHT_STATUS){
-          MyMessage msg(CHILD_LIGHT,V_TRIPPED);
-          msg.setDestination(MY_PARENT_NODE_ID);
           lightStatus = digitalRead(LED_PIN);
-          send(msg.set(lightStatus));
+          send(msgLight.set(lightStatus));
       } else if (message.getLong() == GET_TEMP){
           send(msgTemp.set(temp));
       } else if (message.getLong() == GET_HUM){
@@ -120,14 +99,21 @@ void turnLightOff(){
 
 void readTemp(){
   temp = dht.getTemperature();
+  Serial.println(temp);
   if (isnan(temp)) {
     Serial.println("Failed reading temperature from DHT!");
+  } else {
+    send(msgTemp.set(temp));
   }
 }
 
 void readHum(){
   hum = dht.getHumidity();
+  Serial.print(hum);
+  Serial.println("%");
   if(isnan(hum)) {
     Serial.println("Failed reading humidity from DHT!");
+  } else{
+    send(msgHum.set(hum));
   }
 }
